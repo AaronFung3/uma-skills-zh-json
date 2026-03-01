@@ -1,5 +1,5 @@
 from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup, NavigableString
+from bs4 import BeautifulSoup, Tag, NavigableString  # 加返 Tag
 import json
 import re
 import time
@@ -23,7 +23,7 @@ with sync_playwright() as p:
     
     print(f"正在載入 {url} ...")
     page.goto(url, wait_until="networkidle", timeout=120000)
-    page.wait_for_timeout(10000)  # 多等確保載入完
+    page.wait_for_timeout(10000)
     
     html = page.content()
     soup = BeautifulSoup(html, 'html.parser')
@@ -46,7 +46,7 @@ for row in rows:
     cells = row.find_all('td')
     if len(cells) >= 2:
         cn_raw = cells[1].get_text(strip=True)
-        if cn_raw:  # 有中文先捉
+        if cn_raw:
             jp_name = clean_text(cells[0].get_text(strip=True))
             cn_name = clean_text(cn_raw)
             if jp_name and cn_name:
@@ -87,14 +87,14 @@ for row in unique_table.find_all('tr'):
                 sib = sib.previous_sibling
             jp_res = ''.join(reversed(prev_sibs))
             
-            # br 後所有文字為中文（但只取第一段，忽略多餘）
+            # br 後所有文字為中文（只取到下一個 br 或結束）
             nxt_sibs = []
             sib = br.next_sibling
             while sib:
                 if isinstance(sib, NavigableString):
                     nxt_sibs.append(sib.strip())
                 if isinstance(sib, Tag) and sib.name == 'br':
-                    break  # 遇到第二個 br 就停
+                    break
                 sib = sib.next_sibling
             cn_res = ''.join(nxt_sibs)
     
