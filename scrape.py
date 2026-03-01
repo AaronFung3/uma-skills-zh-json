@@ -63,58 +63,46 @@ for row in rows:
     if len(cells) < 2:
         continue
     
-    target_td = cells[1]  # 只睇第二個 td
-    text_raw = target_td.get_text(strip=True)
+    target_td = cells[1]  # 只睇第二格
+    text_raw = target_td.get_text(separator="\n", strip=True)
     if not text_raw:
         continue
     
-    # 你嘅 filter：如果以中文開頭，就跳過（條件說明）
-    first_char = text_raw[0] if text_raw else ''
-    if '\u4e00' <= first_char <= '\u9fff':
-        print("以中文開頭，跳過（條件說明）:", text_raw[:50])
+    # debug 原始 td 內容
+    print("原始固有 td:", text_raw[:80])
+    
+    # filter 1: 跳過明顯條件說明
+    if re.search(r'^[1-9]\.|育成事件|勝出最少|擁有最少|または|或', text_raw):
+        print("條件說明，跳過:", text_raw[:50])
         continue
     
     jp_res = ""
     cn_res = ""
     
-    if 'forth' in target_td.get('class', []):
-        if '/' in text_raw:
-            parts = text_raw.split('/', 1)
-            jp_res = parts[0].strip()
-            cn_res = parts[1].strip()
-        else:
-            jp_res = text_raw.strip()
-            cn_res = ""
+    # 優先 / 分隔
+    if '/' in text_raw:
+        parts = text_raw.split('/', 1)
+        jp_res = parts[0].strip()
+        cn_res = parts[1].strip()
     else:
-        br = target_td.find('br')
-        if br:
-            # br 前所有文字為日文
-            prev_sibs = []
-            sib = br.previous_sibling
-            while sib:
-                if isinstance(sib, NavigableString):
-                    prev_sibs.append(sib.strip())
-                sib = sib.previous_sibling
-            jp_res = ''.join(reversed(prev_sibs)).strip()
-            
-            # br 後所有文字為中文
-            cn_parts = []
-            sib = br.next_sibling
-            while sib:
-                if isinstance(sib, NavigableString):
-                    cn_parts.append(sib.strip())
-                if isinstance(sib, Tag) and sib.name == 'br':
-                    break
-                sib = sib.next_sibling
-            cn_res = ''.join(cn_parts).strip()
+        # 用 \n 分隔（<br> 變成換行）
+        lines = [line.strip() for line in text_raw.split('\n') if line.strip()]
+        if len(lines) >= 2:
+            jp_res = lines[0]
+            cn_res = lines[1]
+        elif len(lines) == 1:
+            jp_res = lines[0]
+            cn_res = ""
         else:
             jp_res = text_raw.strip()
             cn_res = ""
     
     jp_f = clean_text(jp_res)
     cn_f = clean_text(cn_res)
-    if jp_f and cn_f:
-        all_skills[jp_f] = cn_f
-        print(f"固有: {jp_f} → {cn_f} (原jp: {jp_res[:50]})")
+    
+    # 最終 filter：日文要有假名或漢字（避免捉到純條件）
+    if jp_f and re.search(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]', jp_f):
+        all_skills[jp_f] = cn_f or jp_f  # 如果冇中文，用日文代替
+        print(f"固有: {jp_f} → {cn_f or '(無中文)'} (原jp: {jp_res[:50]})")
     else:
-        print("固有 td 無有效日中對應，跳過:", text_raw[:50])
+        print("日文無效，跳過:", jp_res[:50])
