@@ -55,47 +55,56 @@ for row in rows:
 # ====================
 # 第二部分：固有技能 - 最尾個 table
 # ====================
-print("--- 處理固有技能 (最尾 table) ---")
-unique_table = all_tables[-1]
-rows = unique_table.find_all('tr')[1:]  # 跳過第一個 tr
-for row in rows:
-    cells = row.find_all('td')
-    if len(cells) < 2:
-        continue
-    
-    target_td = cells[1]  # 只睇第二格
-    text_raw = target_td.get_text(separator="\n", strip=True)
-    if not text_raw:
-        continue
-    
-    # debug 原始內容
-    print("原始固有 td:", text_raw[:80])
-    
-    # 狠 filter：任何地方有 1. 或 2. 就飛走成個 td
-    if re.search(r'1\.|2\.', text_raw):
-        print("含有 1. 或 2.，直接飛走成個 td:", text_raw[:50])
-        continue
-    
-    # 其他條件說明關鍵詞（保留防漏網）
-    skip_keywords = r'育成事件|勝出最少|擁有最少|または|或|ファン数|スタミナ|パワー|スピード|根性|賢さ|距離|重賞|G1|G2|U.A.F|回[+-]|速[+-]|加速力[+-]|額外条件|効果変更|条件変更|現在速|現在加速力'
-    if re.search(skip_keywords, text_raw):
-        print("其他條件說明，飛走:", text_raw[:50])
-        continue
-    
-    # 冇假名 → 飛走
-    if not re.search(r'[\u3040-\u309f\u30a0-\u30ff]', text_raw):
-        print("冇假名，飛走:", text_raw[:50])
-        continue
-    
-    # 長度異常 → 飛走
-    if len(text_raw) < 4 or len(text_raw) > 25:
-        print("長度異常，飛走:", text_raw[:50])
-        continue
-    
-    # 乾淨嘅就當日文，中文留空或用日文代替
-    jp_f = clean_text(text_raw)
-    if jp_f:
-        all_skills[jp_f] = jp_f  # 暫用日文代替中文（之後可手動補）
-        print(f"固有: {jp_f} → {jp_f} (原文字: {text_raw[:50]})")
-    else:
-        print("清理後無內容，飛走:", text_raw[:50])
+print("--- 處理：全表掃描 (排除 rowspan 並執行極狠 Filter) ---")
+# 攞最後兩個 table (一般技能同固有技能)
+target_tables = all_tables[-2:]
+
+for table in target_tables:
+    rows = table.find_all('tr')
+    for row in rows:
+        cells = row.find_all('td')
+        for td in cells:
+            # 1. 排除有 rowspan 嘅 td (通常係分類標籤)
+            if td.has_attr('rowspan'):
+                continue
+            
+            # 2. 攞純文字做極狠 Filter
+            full_text = td.get_text(strip=True)
+            
+            # 如果見到 1. 2. + → 或者效果字眼，直接成個 td 唔要
+            if not full_text or re.search(r'1\.|2\.|3\.|\+|＋|→|->|效果|條件|加速|速度|回復|以上|以下|、', full_text):
+                continue
+            
+            # 3. 檢查有無日文假名 (確保係技能名，唔係純數字或純符號)
+            if not re.search(r'[\u3040-\u309f\u30a0-\u30ff]', full_text):
+                continue
+
+            jp_res, cn_res = "", ""
+            classes = td.get('class', [])
+
+            # 4. 依照 class="forth" 或 <br> 邏輯提取
+            if 'forth' in classes:
+                if '/' in full_text:
+                    parts = full_text.split('/', 1)
+                    jp_res, cn_res = parts[0], parts[1]
+            else:
+                br = td.find('br')
+                if br:
+                    prev = [s for s in br.previous_siblings if isinstance(s, (str, NavigableString))]
+                    jp_res = "".join(reversed([str(s) for s in prev])).strip()
+                    nxt = [s for s in br.next_siblings if isinstance(s, (str, NavigableString))]
+                    cn_res = "".join([str(s) for s in nxt]).strip()
+
+            # 5. 清理並存檔
+            jp_f = clean_text(jp_res)
+            cn_f = clean_text(cn_res)
+
+            if jp_f and cn_f:
+                all_skills[jp_f] = cn_f
+                print(f"✅ 成功提取: {jp_f} -> {cn_f}")
+
+# 寫入 JSON
+with open('skills.json', 'w', encoding='utf-8') as f:
+    json.dump(all_skills, f, ensure_ascii=False, indent=2)
+
+print(f"\n全部完成！一共執到 {len(all_skills)} 組純淨技能名。")
