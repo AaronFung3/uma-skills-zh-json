@@ -11,6 +11,7 @@ all_skills = {}
 def clean_text(t):
     if not t:
         return ''
+    # 移除所有符號、數字、括號、[バ] 等，只保留核心文字
     t = re.sub(r'[◯◎○□△★◇◆☆◼︎▽▲▼△○◎◇◆★☆□△◇◆◯]+', '', t)
     t = re.sub(r'\d+\.?\d*[【[]?[バPt/～~%～～～]+[】\]]?', '', t)
     t = re.sub(r'\(.*?\)|【.*?】|\[.*?\]|\{.*?\}', '', t)
@@ -37,85 +38,100 @@ with sync_playwright() as p:
     soup = BeautifulSoup(html, 'html.parser')
     browser.close()
 
-# 限定條件表 - 純文字模式
+# ====================
+# 第一部分：限定條件表
+# ====================
 print("處理限定條件表...")
-found_condition = False
-condition_keywords = ["出現兩個或以上限定條件時", "兩個條件都要附合", "先行・長距離", "中距離/長距離"]
 
-for string in soup.find_all(string=True):
-    str_text = string.strip()
-    if any(kw in str_text for kw in condition_keywords):
-        found_condition = True
-        print(f"找到限定關鍵句: {str_text[:80]}...")
+condition_key = "出現兩個或以上限定條件時中間顯示\"・\"為兩個條件都要附合"
+
+found = False
+for p in soup.find_all('p'):
+    text = p.get_text(strip=True)
+    if condition_key in text:
+        found = True
+        print("找到限定條件說明句！")
         
-        # 從該 string 開始，向下收集文字行，直到下一個大標題或空
-        current = string.parent.next_sibling
-        while current:
-            if isinstance(current, Tag):
-                if current.name in ['h1', 'h2', 'h3', 'p'] and len(current.get_text(strip=True)) > 20:
-                    break  # 遇大標題 stop
-                text_lines = current.get_text(separator='\n', strip=True).split('\n')
-                for line in text_lines:
-                    line = line.strip()
-                    if '・' in line or '/' in line:
-                        # 解析 ・ 或 / 前後
-                        if '・' in line:
-                            parts = line.split('・', 1)
-                        elif '/' in line:
-                            parts = line.split('/', 1)
-                        else:
-                            continue
-                        jp = parts[0].strip()
-                        cn = parts[1].strip() if len(parts) > 1 else ''
-                        jp_clean = clean_text(jp)
-                        cn_clean = clean_text(cn)
-                        if jp_clean and cn_clean:
-                            all_skills[jp_clean] = cn_clean
-                            print(f"限定插入: {jp_clean} → {cn_clean} (原行: {line[:50]})")
-            current = current.next_sibling if hasattr(current, 'next_sibling') else None
+        # 從這個 p 開始，向下找第一個 table
+        table = p.find_next('table')
+        if table:
+            print("找到限定條件表！第一行文字：", table.find('tr').get_text(strip=True)[:50] if table.find('tr') else "無")
+            rows = table.find_all('tr')[1:]  # skip 第一行 title
+            for row in rows:
+                cells = row.find_all(['td', 'th'])
+                if len(cells) < 2:
+                    continue
+                cn_text = cells[1].get_text(strip=True)
+                if not cn_text:
+                    continue
+                jp_text = cells[0].get_text(strip=True)
+                jp_clean = clean_text(jp_text)
+                cn_clean = clean_text(cn_text)
+                if jp_clean and cn_clean:
+                    all_skills[jp_clean] = cn_clean
+                    print(f"限定: {jp_clean} → {cn_clean}")
+        else:
+            print("說明句下面冇 table！")
         break
 
-# 固有技能 - 純文字 + td 模式
-print("處理固有技能...")
-found_unique = False
-unique_keywords = ["符合繼承固有的進化條件時直接進化無需選擇", "設定, 符合繼承固有的進化條件時"]
+if not found:
+    print("冇搵到限定條件說明句！")
 
-for string in soup.find_all(string=True):
-    str_text = string.strip()
-    if any(kw in str_text for kw in unique_keywords):
-        found_unique = True
-        print(f"找到固有關鍵句: {str_text[:80]}...")
+# ====================
+# 第二部分：固有技能
+# ====================
+print("處理固有技能...")
+
+unique_key = "設定, 符合繼承固有的進化條件時直接進化無需選擇"
+
+found = False
+for p in soup.find_all('p'):
+    text = p.get_text(strip=True)
+    if unique_key in text:
+        found = True
+        print("找到固有說明句！")
         
-        current = string.parent.next_sibling
+        # 從這個 p 開始，向下找所有 td，只處理第二格
+        current = p.next_element
         while current:
-            if isinstance(current, Tag):
-                if current.name == 'td' and current.get_text(strip=True):
+            if isinstance(current, Tag) and current.name == 'td':
+                # 判斷是否第二格（假設每行第一格空或標題）
+                prev_sib = current.find_previous_sibling('td')
+                if not prev_sib or not prev_sib.get_text(strip=True):
                     td = current
-                    text = td.get_text(separator="|", strip=True)
                     jp = ""
                     cn = ""
                     
-                    if '/' in text:
-                        parts = text.split('/', 1)
-                        jp = parts[0].strip()
-                        cn = parts[1].strip()
+                    if 'forth' in td.get('class', []):
+                        # 有 class="forth" → 優先 / 分隔
+                        text_full = td.get_text(separator="/", strip=True)
+                        if '/' in text_full:
+                            parts = text_full.split('/', 1)
+                            jp = parts[0].strip()
+                            cn = parts[1].strip()
                     else:
+                        # 冇 class → 用 <br>
                         br = td.find('br')
                         if br:
-                            jp = ''.join(str(s).strip() for s in br.previous_siblings if isinstance(s, NavigableString))
-                            cn = ''.join(str(s).strip() for s in br.next_siblings if isinstance(s, NavigableString))
+                            # <br> 前所有文字為日文
+                            jp_parts = [s.strip() for s in br.previous_siblings if isinstance(s, NavigableString)]
+                            jp = ''.join(reversed(jp_parts))
+                            # <br> 後所有文字為中文
+                            cn_parts = [s.strip() for s in br.next_siblings if isinstance(s, NavigableString)]
+                            cn = ''.join(cn_parts)
                     
                     jp_clean = clean_text(jp)
                     cn_clean = clean_text(cn)
                     if jp_clean and cn_clean:
                         all_skills[jp_clean] = cn_clean
-                        print(f"固有插入: {jp_clean} → {cn_clean} (原jp: {jp})")
-                if current.name in ['h1', 'h2', 'h3'] and len(current.get_text(strip=True)) > 20:
-                    break  # 遇大標題 stop
-            current = current.next_sibling if hasattr(current, 'next_sibling') else None
+                        print(f"固有: {jp_clean} → {cn_clean} (原jp: {jp[:50]})")
+            current = current.next_element if hasattr(current, 'next_element') else None
         break
 
-# 寫入
+if not found:
+    print("冇搵到固有說明句！")
+
+# 寫入 JSON
 with open('skills.json', 'w', encoding='utf-8') as f:
     json.dump(all_skills, f, ensure_ascii=False, indent=2)
 
