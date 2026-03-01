@@ -71,13 +71,19 @@ for row in rows:
     # debug 原始內容
     print("原始固有 td:", text_raw[:80])
     
-    # filter 1: 跳過明顯條件說明
-    if re.search(r'^[1-9]\.|育成事件|勝出最少|擁有最少|または|或|ファン数|スタミナ|パワー|スピード|根性|賢さ|距離|重賞|G1|G2|U.A.F', text_raw):
-        print("條件說明，跳過:", text_raw[:50])
+    # 強力 filter：含有 1. 或 2. 就 skip（你新要求）
+    if re.search(r'1\.|2\.', text_raw):
+        print("含有 1. 或 2.，跳過（條件說明）:", text_raw[:50])
         continue
     
-    # filter 2: 冇日文假名 → 跳過
-    if not re.search(r'[\u3040-\u309f\u30a0-\u30ff]', text_raw):
+    # 其他條件說明關鍵詞
+    skip_keywords = r'育成事件|勝出最少|擁有最少|または|或|ファン数|スタミナ|パワー|スピード|根性|賢さ|距離|重賞|G1|G2|U.A.F|回[+-]|速[+-]|加速力[+-]|額外条件|効果変更|条件変更'
+    if re.search(skip_keywords, text_raw):
+        print("其他條件說明，跳過:", text_raw[:50])
+        continue
+    
+    # 冇假名 → 跳過
+    if not re.search(r'[\u3040-\u30ff]', text_raw):
         print("冇假名，跳過:", text_raw[:50])
         continue
     
@@ -90,7 +96,7 @@ for row in rows:
         jp_res = parts[0].strip()
         cn_res = parts[1].strip()
     else:
-        # 用 \n 分隔（<br> 變換行）
+        # 用 \n 分隔
         lines = [line.strip() for line in text_raw.split('\n') if line.strip()]
         if len(lines) >= 2:
             jp_res = lines[0]
@@ -107,7 +113,7 @@ for row in rows:
     
     # 最終確認：日文要有假名或漢字，且長度合理
     if jp_f and re.search(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]', jp_f) and len(jp_f) > 3:
-        all_skills[jp_f] = cn_f or jp_f  # 冇中文用日文代替
+        all_skills[jp_f] = cn_f or jp_f
         print(f"固有: {jp_f} → {cn_f or '(無中文)'} (原jp: {jp_res[:50]})")
     else:
         print("日文無效，跳過:", jp_res[:50])
