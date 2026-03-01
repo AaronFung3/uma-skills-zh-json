@@ -63,51 +63,53 @@ for row in rows:
     if len(cells) < 2:
         continue
     
-    # 優先讀第一格作為日文
-    jp_cell = cells[0]
-    cn_cell = cells[1]
+    target_td = cells[1]  # 只睇第二個 td
+    text_raw = target_td.get_text(strip=True)
+    if not text_raw:
+        continue
     
-    jp_raw = jp_cell.get_text(strip=True)
-    cn_raw = cn_cell.get_text(strip=True)
+    # 你嘅 filter：如果以中文開頭，就跳過（條件說明）
+    first_char = text_raw[0] if text_raw else ''
+    if '\u4e00' <= first_char <= '\u9fff':
+        print("以中文開頭，跳過（條件說明）:", text_raw[:50])
+        continue
     
-    # 如果第一格冇內容或太短（例如只係符號/空），改讀第二格
-    if not jp_raw or len(jp_raw) < 5 or not re.search(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]', jp_raw):
-        jp_raw = cn_raw
-        cn_raw = ""  # 第二格變日文，中文冇（或之後再抽）
+    jp_res = ""
+    cn_res = ""
     
-    # 如果第二格有內容，就試分隔日中
-    if cn_raw:
-        jp_res = jp_raw
-        cn_res = cn_raw
-        
-        # 如果有 / ，分隔
-        if '/' in cn_raw:
-            parts = cn_raw.split('/', 1)
+    if 'forth' in target_td.get('class', []):
+        if '/' in text_raw:
+            parts = text_raw.split('/', 1)
             jp_res = parts[0].strip()
             cn_res = parts[1].strip()
         else:
-            br = cn_cell.find('br')
-            if br:
-                jp_parts = []
-                sib = br.previous_sibling
-                while sib:
-                    if isinstance(sib, NavigableString):
-                        jp_parts.append(sib.strip())
-                    sib = sib.previous_sibling
-                jp_res = ''.join(reversed(jp_parts)).strip()
-                
-                cn_parts = []
-                sib = br.next_sibling
-                while sib:
-                    if isinstance(sib, NavigableString):
-                        cn_parts.append(sib.strip())
-                    if isinstance(sib, Tag) and sib.name == 'br':
-                        break
-                    sib = sib.next_sibling
-                cn_res = ''.join(cn_parts).strip()
+            jp_res = text_raw.strip()
+            cn_res = ""
     else:
-        jp_res = jp_raw
-        cn_res = ""
+        br = target_td.find('br')
+        if br:
+            # br 前所有文字為日文
+            prev_sibs = []
+            sib = br.previous_sibling
+            while sib:
+                if isinstance(sib, NavigableString):
+                    prev_sibs.append(sib.strip())
+                sib = sib.previous_sibling
+            jp_res = ''.join(reversed(prev_sibs)).strip()
+            
+            # br 後所有文字為中文
+            cn_parts = []
+            sib = br.next_sibling
+            while sib:
+                if isinstance(sib, NavigableString):
+                    cn_parts.append(sib.strip())
+                if isinstance(sib, Tag) and sib.name == 'br':
+                    break
+                sib = sib.next_sibling
+            cn_res = ''.join(cn_parts).strip()
+        else:
+            jp_res = text_raw.strip()
+            cn_res = ""
     
     jp_f = clean_text(jp_res)
     cn_f = clean_text(cn_res)
@@ -115,4 +117,4 @@ for row in rows:
         all_skills[jp_f] = cn_f
         print(f"固有: {jp_f} → {cn_f} (原jp: {jp_res[:50]})")
     else:
-        print("固有 td 無有效日中對應，跳過:", jp_raw[:50] + " | " + cn_raw[:50])
+        print("固有 td 無有效日中對應，跳過:", text_raw[:50])
