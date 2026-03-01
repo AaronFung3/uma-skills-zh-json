@@ -1,11 +1,12 @@
 from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup, Tag, NavigableString  # 必須有 Tag 同 NavigableString
+from bs4 import BeautifulSoup, Tag, NavigableString  # 一定要有 Tag 同 NavigableString
 import json
 import re
 import time
 
-url = "https://www.wpstud.com/UmaMusume/UmaAbility.htm"
+print("導入成功：BeautifulSoup, Tag, NavigableString 已載入")  # 確認導入
 
+url = "https://www.wpstud.com/UmaMusume/UmaAbility.htm"
 all_skills = {}
 
 def clean_text(t):
@@ -20,11 +21,11 @@ def clean_text(t):
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
     page = browser.new_page(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-    
+   
     print(f"正在載入 {url} ...")
     page.goto(url, wait_until="networkidle", timeout=120000)
     page.wait_for_timeout(10000)
-    
+   
     html = page.content()
     soup = BeautifulSoup(html, 'html.parser')
     browser.close()
@@ -62,19 +63,21 @@ for row in unique_table.find_all('tr'):
     cells = row.find_all('td')
     if len(cells) < 2:
         continue
-    
+   
     target_td = cells[1]  # 只睇第二格
     classes = target_td.get('class', [])
-    
+   
     jp_res = ""
     cn_res = ""
-    
+   
     if 'forth' in classes:
         txt = target_td.get_text(strip=True)
         if '/' in txt:
             parts = txt.split('/', 1)
             jp_res = parts[0].strip()
             cn_res = parts[1].strip()
+        else:
+            print("forth class 但冇 /，跳過:", txt[:50])
     else:
         br = target_td.find('br')
         if br:
@@ -86,23 +89,29 @@ for row in unique_table.find_all('tr'):
                     prev_sibs.append(sib.strip())
                 sib = sib.previous_sibling
             jp_res = ''.join(reversed(prev_sibs))
-            
+           
             # br 後所有文字為中文（只取到下一個 br 或結束）
             nxt_sibs = []
             sib = br.next_sibling
             while sib:
                 if isinstance(sib, NavigableString):
-                    nxt_sibs.append(sib.strip())
+                    stripped = sib.strip()
+                    if stripped:
+                        nxt_sibs.append(stripped)
                 if isinstance(sib, Tag) and sib.name == 'br':
                     break
                 sib = sib.next_sibling
             cn_res = ''.join(nxt_sibs)
-    
+        else:
+            print("冇 br，跳過 td:", target_td.get_text(strip=True)[:50])
+   
     jp_f = clean_text(jp_res)
     cn_f = clean_text(cn_res)
     if jp_f and cn_f:
         all_skills[jp_f] = cn_f
         print(f"固有: {jp_f} → {cn_f} (原jp: {jp_res[:50]})")
+    else:
+        print("固有 td 無有效日中對應，跳過:", target_td.get_text(strip=True)[:50])
 
 # 儲存
 with open('skills.json', 'w', encoding='utf-8') as f:
