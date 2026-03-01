@@ -1,58 +1,77 @@
 from playwright.sync_api import sync_playwright
 from bs4 import BeautifulSoup
 import json
+import time
 
 url = "https://wiki.biligame.com/umamusume/%E6%8A%80%E8%83%BD%E9%80%9F%E6%9F%A5%E8%A1%A8"
 
 skills = {}
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
-    page = browser.new_page()
+    # Launch browser with CI-friendly args
+    browser = p.chromium.launch(
+        headless=True,
+        args=[
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-extensions'
+        ]
+    )
     
-    page.goto(url, wait_until="networkidle", timeout=60000)
-    page.wait_for_selector('#CardSelectTr', timeout=30000)
+    page = browser.new_page(
+        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    )
     
-    html = page.content()
-    soup = BeautifulSoup(html, 'html.parser')
+    max_retries = 3
+    success = False
     
-    table = soup.find('table', id='CardSelectTr')
-    if not table:
-        print("找不到 id='CardSelectTr' 的表格！")
-        browser.close()
-        exit(1)
-    
-    rows = table.select('tbody tr')
-    print(f"找到 {len(rows)} 行資料")
-    
-    for row in rows:
-        cells = row.find_all('td')
-        if len(cells) < 4:
-            continue  # 跳過不完整的行
-        
-        # 根據你描述：
-        # 第 2 個 td (index 1)：日文技能名
-        jp = cells[1].get_text(strip=True)
-        
-        # 第 4 個 td (index 3)：繁體中文名
-        cn = cells[3].get_text(strip=True)
-        
-        # 效果描述（如果有，通常在第 5 個或之後；這裡假設第 5 個 td 是主要描述）
-        desc = ''
-        if len(cells) >= 5:
-            desc = cells[4].get_text(strip=True)
-            # 如果描述分散在多個 td，可以用 ' '.join(c.get_text(strip=True) for c in cells[4:]) 合併
-        
-        if jp and jp.strip():  # 確保日文名不空
-            # 組合格式：你可以調整，例如只用 cn，或加 desc
-            value = cn
-            if desc:
-                value += f"：{desc}"
+    for attempt in range(max_retries):
+        try:
+            print(f"嘗試 {attempt + 1}/{max_retries} 載入頁面...")
+            page.goto(url, wait_until="domcontentloaded", timeout=90000)
             
-            skills[jp] = value
+            # 等表格出現
+            page.wait_for_selector('#CardSelectTr', state="visible", timeout=60000)
             
-            # debug 輸出（上線可註解）
-            # print(f"{jp} → {value}")
+            # 多等一陣確保內容 render 完
+            page.wait_for_timeout(5000)
+            
+            html = page.content()
+            print("頁面標題：", page.title())
+            print("HTML 長度：", len(html))
+            print("CardSelectTr 存在？", 'CardSelectTr' in html)
+            
+            soup = BeautifulSoup(html, 'html.parser')
+            
+            table = soup.find('table', id='CardSelectTr')
+            if not table:
+                raise Exception("找不到 id='CardSelectTr' 的表格")
+            
+            rows = table.select('tbody tr')
+            print(f"找到 {len(rows)} 行資料")
+            
+            for row in rows:
+                cells = row.find_all('td')
+                if len(cells) < 4:
+                    continue
+                
+                jp = cells[1].get_text(strip=True)  # 第2個 td: 日文名
+                cn = cells[3].get_text(strip=True)  # 第4個 td: 繁中名
+                
+                if jp and jp.strip():
+                    skills[jp] = cn  # 只存繁中名，唔加描述
+            
+            success = True
+            break
+            
+        except Exception as e:
+            print(f"嘗試 {attempt + 1} 失敗: {str(e)}")
+            if attempt < max_retries - 1:
+                time.sleep(5)
+            else:
+                raise
     
     browser.close()
 
