@@ -71,20 +71,20 @@ for row in rows:
     # debug 原始內容
     print("原始固有 td:", text_raw[:80])
     
-    # 強力 filter：含有 1. 或 2. 就 skip（你新要求）
-    if re.search(r'1\.|2\.', text_raw):
-        print("含有 1. 或 2.，跳過（條件說明）:", text_raw[:50])
+    # 強力 filter 1: 含有數字開頭或條件關鍵詞 → skip
+    if re.search(r'^[1-9]\.|1\.|2\.|育成事件|勝出最少|擁有最少|または|或|ファン数|スタミナ|パワー|スピード|根性|賢さ|距離|重賞|G1|G2|U.A.F|回[+-]|速[+-]|加速力[+-]|額外条件|効果変更|条件変更|現在速|現在加速力', text_raw):
+        print("條件說明或數字開頭，跳過:", text_raw[:50])
         continue
     
-    # 其他條件說明關鍵詞
-    skip_keywords = r'育成事件|勝出最少|擁有最少|または|或|ファン数|スタミナ|パワー|スピード|根性|賢さ|距離|重賞|G1|G2|U.A.F|回[+-]|速[+-]|加速力[+-]|額外条件|効果変更|条件変更'
-    if re.search(skip_keywords, text_raw):
-        print("其他條件說明，跳過:", text_raw[:50])
-        continue
-    
-    # 冇假名 → 跳過
-    if not re.search(r'[\u3040-\u30ff]', text_raw):
+    # 強力 filter 2: 冇假名 → skip
+    if not re.search(r'[\u3040-\u309f\u30a0-\u30ff]', text_raw):
         print("冇假名，跳過:", text_raw[:50])
+        continue
+    
+    # 強力 filter 3: 日文太長或太短 → skip
+    potential_jp = text_raw.split('\n')[0].strip() if '\n' in text_raw else text_raw.strip()
+    if len(potential_jp) < 4 or len(potential_jp) > 30:
+        print("日文長度異常，跳過:", potential_jp[:50])
         continue
     
     jp_res = ""
