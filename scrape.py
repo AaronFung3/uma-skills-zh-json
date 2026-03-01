@@ -71,49 +71,25 @@ for row in rows:
     # debug 原始內容
     print("原始固有 td:", text_raw[:80])
     
-    # 強力 filter 1: 含有數字開頭或條件關鍵詞 → skip
-    if re.search(r'^[1-9]\.|1\.|2\.|育成事件|勝出最少|擁有最少|または|或|ファン数|スタミナ|パワー|スピード|根性|賢さ|距離|重賞|G1|G2|U.A.F|回[+-]|速[+-]|加速力[+-]|額外条件|効果変更|条件変更|現在速|現在加速力', text_raw):
-        print("條件說明或數字開頭，跳過:", text_raw[:50])
+    # 狠 filter：任何地方有 1. 2. 或 + 就飛走
+    if re.search(r'1\.|2\.|\+|回[+-]|速[+-]|加速力[+-]|額外|効果変更|条件変更|育成事件|勝出最少|擁有最少|または|または', text_raw):
+        print("含有 1./2./+ 或條件詞，飛走:", text_raw[:50])
         continue
     
-    # 強力 filter 2: 冇假名 → skip
+    # 冇假名 → 飛走
     if not re.search(r'[\u3040-\u309f\u30a0-\u30ff]', text_raw):
-        print("冇假名，跳過:", text_raw[:50])
+        print("冇假名，飛走:", text_raw[:50])
         continue
     
-    # 強力 filter 3: 日文太長或太短 → skip
-    potential_jp = text_raw.split('\n')[0].strip() if '\n' in text_raw else text_raw.strip()
-    if len(potential_jp) < 4 or len(potential_jp) > 30:
-        print("日文長度異常，跳過:", potential_jp[:50])
+    # 長度太短或太長 → 飛走
+    if len(text_raw) < 4 or len(text_raw) > 25:
+        print("長度異常，飛走:", text_raw[:50])
         continue
     
-    jp_res = ""
-    cn_res = ""
-    
-    # 優先 / 分隔
-    if '/' in text_raw:
-        parts = text_raw.split('/', 1)
-        jp_res = parts[0].strip()
-        cn_res = parts[1].strip()
+    # 乾淨嘅就當日文，中文留空（因為你話淨要日中對應，條件飛走就得）
+    jp_f = clean_text(text_raw)
+    if jp_f:
+        all_skills[jp_f] = jp_f  # 暫時用日文代替中文（之後可手動補）
+        print(f"固有: {jp_f} → {jp_f} (原文字: {text_raw[:50]})")
     else:
-        # 用 \n 分隔
-        lines = [line.strip() for line in text_raw.split('\n') if line.strip()]
-        if len(lines) >= 2:
-            jp_res = lines[0]
-            cn_res = lines[1]
-        elif len(lines) == 1:
-            jp_res = lines[0]
-            cn_res = ""
-        else:
-            jp_res = text_raw.strip()
-            cn_res = ""
-    
-    jp_f = clean_text(jp_res)
-    cn_f = clean_text(cn_res)
-    
-    # 最終確認：日文要有假名或漢字，且長度合理
-    if jp_f and re.search(r'[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]', jp_f) and len(jp_f) > 3:
-        all_skills[jp_f] = cn_f or jp_f
-        print(f"固有: {jp_f} → {cn_f or '(無中文)'} (原jp: {jp_res[:50]})")
-    else:
-        print("日文無效，跳過:", jp_res[:50])
+        print("清理後無內容，飛走:", text_raw[:50])
