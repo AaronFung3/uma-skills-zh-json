@@ -1,0 +1,31 @@
+name: Monthly Scrape Biligame Uma Skills
+
+on:
+  schedule:
+    - cron: '0 0 1-7 * 2'   # UTC 00:00，在每月 1-7 日的星期二觸發
+  workflow_dispatch:     # 手動 trigger 都得
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: pip install requests beautifulsoup4
+
+    - name: Scrape skills
+      run: python scrape.py   # 你下面要寫嘅 Python 腳本
+
+    - name: Commit changes
+      run: |
+        git config --global user.name 'GitHub Actions'
+        git config --global user.email 'actions@github.com'
+        git add skills.json
+        git commit -m "Auto update skills from Biligame" || echo "No changes"
+        git push
