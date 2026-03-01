@@ -1,5 +1,5 @@
 from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup, Tag, NavigableString  # 關鍵：加返 Tag 同 NavigableString
+from bs4 import BeautifulSoup, Tag, NavigableString  # 必須有 Tag 同 NavigableString
 import json
 import re
 import time
