@@ -1,12 +1,11 @@
 from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup, Tag, NavigableString  # 一定要有 Tag 同 NavigableString
+from bs4 import BeautifulSoup
 import json
 import re
 import time
 
-print("導入成功：BeautifulSoup, Tag, NavigableString 已載入")  # 確認導入
-
 url = "https://www.wpstud.com/UmaMusume/UmaAbility.htm"
+
 all_skills = {}
 
 def clean_text(t):
@@ -21,11 +20,11 @@ def clean_text(t):
 with sync_playwright() as p:
     browser = p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
     page = browser.new_page(user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-   
+    
     print(f"正在載入 {url} ...")
     page.goto(url, wait_until="networkidle", timeout=120000)
     page.wait_for_timeout(10000)
-   
+    
     html = page.content()
     soup = BeautifulSoup(html, 'html.parser')
     browser.close()
@@ -59,59 +58,59 @@ for row in rows:
 # ====================
 print("--- 處理固有技能 (最尾 table) ---")
 unique_table = all_tables[-1]
-for row in unique_table.find_all('tr'):
+rows = unique_table.find_all('tr')[1:]  # 跳過第一個 tr (title)
+for row in rows:
     cells = row.find_all('td')
     if len(cells) < 2:
         continue
-   
-    target_td = cells[1]  # 只睇第二格
-    classes = target_td.get('class', [])
-   
+    
+    target_td = cells[1]  # 固定讀第二個 td
+    text_raw = target_td.get_text(strip=True)
+    if not text_raw:
+        continue  # 第二格冇內容 → skip
+    
     jp_res = ""
     cn_res = ""
-   
-    if 'forth' in classes:
-        txt = target_td.get_text(strip=True)
-        if '/' in txt:
-            parts = txt.split('/', 1)
+    
+    if 'forth' in target_td.get('class', []):
+        if '/' in text_raw:
+            parts = text_raw.split('/', 1)
             jp_res = parts[0].strip()
             cn_res = parts[1].strip()
         else:
-            print("forth class 但冇 /，跳過:", txt[:50])
+            jp_res = text_raw.strip()
+            cn_res = ""
     else:
         br = target_td.find('br')
         if br:
-            # br 前所有文字為日文
-            prev_sibs = []
+            # <br> 前為日文
+            jp_parts = []
             sib = br.previous_sibling
             while sib:
-                if isinstance(sib, NavigableString):
-                    prev_sibs.append(sib.strip())
+                if isinstance(sib, str):
+                    jp_parts.append(sib.strip())
                 sib = sib.previous_sibling
-            jp_res = ''.join(reversed(prev_sibs))
-           
-            # br 後所有文字為中文（只取到下一個 br 或結束）
-            nxt_sibs = []
+            jp_res = ''.join(reversed(jp_parts))
+            
+            # <br> 後為中文
+            cn_parts = []
             sib = br.next_sibling
             while sib:
-                if isinstance(sib, NavigableString):
-                    stripped = sib.strip()
-                    if stripped:
-                        nxt_sibs.append(stripped)
-                if isinstance(sib, Tag) and sib.name == 'br':
-                    break
+                if isinstance(sib, str):
+                    cn_parts.append(sib.strip())
                 sib = sib.next_sibling
-            cn_res = ''.join(nxt_sibs)
+            cn_res = ''.join(cn_parts)
         else:
-            print("冇 br，跳過 td:", target_td.get_text(strip=True)[:50])
-   
+            jp_res = text_raw.strip()
+            cn_res = ""
+    
     jp_f = clean_text(jp_res)
     cn_f = clean_text(cn_res)
     if jp_f and cn_f:
         all_skills[jp_f] = cn_f
         print(f"固有: {jp_f} → {cn_f} (原jp: {jp_res[:50]})")
     else:
-        print("固有 td 無有效日中對應，跳過:", target_td.get_text(strip=True)[:50])
+        print("固有 td 無有效對應，跳過:", text_raw[:50])
 
 # 儲存
 with open('skills.json', 'w', encoding='utf-8') as f:
