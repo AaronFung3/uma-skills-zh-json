@@ -18,7 +18,9 @@ jobs:
 
     - name: Install dependencies
       run: pip install requests beautifulsoup4 playwright
-          python -m playwright install --with-deps chromium
+
+    - name: Install Playwright browser
+      run: python -m playwright install --with-deps chromium
 
     - name: Scrape skills
       run: python scrape.py   # 你下面要寫嘅 Python 腳本
