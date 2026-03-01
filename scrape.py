@@ -71,9 +71,15 @@ for row in rows:
     # debug 原始內容
     print("原始固有 td:", text_raw[:80])
     
-    # 狠 filter：任何地方有 1. 2. 或 + 就飛走
-    if re.search(r'1\.|2\.|\+|回[+-]|速[+-]|加速力[+-]|額外|効果変更|条件変更|育成事件|勝出最少|擁有最少|または|または', text_raw):
-        print("含有 1./2./+ 或條件詞，飛走:", text_raw[:50])
+    # 狠 filter：任何地方有 1. 或 2. 就飛走成個 td
+    if re.search(r'1\.|2\.', text_raw):
+        print("含有 1. 或 2.，直接飛走成個 td:", text_raw[:50])
+        continue
+    
+    # 其他條件說明關鍵詞（保留防漏網）
+    skip_keywords = r'育成事件|勝出最少|擁有最少|または|或|ファン数|スタミナ|パワー|スピード|根性|賢さ|距離|重賞|G1|G2|U.A.F|回[+-]|速[+-]|加速力[+-]|額外条件|効果変更|条件変更|現在速|現在加速力'
+    if re.search(skip_keywords, text_raw):
+        print("其他條件說明，飛走:", text_raw[:50])
         continue
     
     # 冇假名 → 飛走
@@ -81,15 +87,15 @@ for row in rows:
         print("冇假名，飛走:", text_raw[:50])
         continue
     
-    # 長度太短或太長 → 飛走
+    # 長度異常 → 飛走
     if len(text_raw) < 4 or len(text_raw) > 25:
         print("長度異常，飛走:", text_raw[:50])
         continue
     
-    # 乾淨嘅就當日文，中文留空（因為你話淨要日中對應，條件飛走就得）
+    # 乾淨嘅就當日文，中文留空或用日文代替
     jp_f = clean_text(text_raw)
     if jp_f:
-        all_skills[jp_f] = jp_f  # 暫時用日文代替中文（之後可手動補）
+        all_skills[jp_f] = jp_f  # 暫用日文代替中文（之後可手動補）
         print(f"固有: {jp_f} → {jp_f} (原文字: {text_raw[:50]})")
     else:
         print("清理後無內容，飛走:", text_raw[:50])
